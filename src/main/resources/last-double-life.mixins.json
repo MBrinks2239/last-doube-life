@@ -3,7 +3,7 @@
 	"package": "stellar.lastdoublelife.mixin",
 	"compatibilityLevel": "JAVA_21",
 	"mixins": [
-		"ExampleMixin"
+      "HealthMixin"
 	],
 	"injectors": {
 		"defaultRequire": 1
