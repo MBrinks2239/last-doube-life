@@ -34,6 +34,10 @@ public class GameManager {
     // partner UUID -> target player UUID (waiting for partner to confirm gift)
     private final Map<UUID, UUID> pendingGiftConfirmations = new HashMap<>();
 
+    // Previous food/saturation levels — used to detect who ate so we propagate the increase
+    private final Map<UUID, Integer> prevFood = new HashMap<>();
+    private final Map<UUID, Float>   prevSat  = new HashMap<>();
+
     private GameManager(MinecraftServer server) {
         this.server = server;
         this.storage = GameStorage.forWorld(server);
@@ -287,17 +291,49 @@ public class GameManager {
 
                 FoodData f1 = p1.getFoodData();
                 FoodData f2 = p2.getFoodData();
+                UUID id1 = p1.getUUID();
+                UUID id2 = p2.getUUID();
 
-                // Sync to the worse value so neither gains an unfair advantage
                 if (cfg.syncHunger) {
-                    int minFood = Math.min(f1.getFoodLevel(), f2.getFoodLevel());
-                    f1.setFoodLevel(minFood);
-                    f2.setFoodLevel(minFood);
+                    int cur1 = f1.getFoodLevel();
+                    int cur2 = f2.getFoodLevel();
+                    int prev1 = prevFood.getOrDefault(id1, cur1);
+                    int prev2 = prevFood.getOrDefault(id2, cur2);
+
+                    if (cur1 > prev1) {
+                        // p1 ate — boost p2 to the same level
+                        f2.setFoodLevel(cur1);
+                    } else if (cur2 > prev2) {
+                        // p2 ate — boost p1 to the same level
+                        f1.setFoodLevel(cur2);
+                    } else if (cur1 != cur2) {
+                        // Neither ate but levels diverged — sync to lower (shared starvation)
+                        int min = Math.min(cur1, cur2);
+                        f1.setFoodLevel(min);
+                        f2.setFoodLevel(min);
+                    }
+
+                    prevFood.put(id1, f1.getFoodLevel());
+                    prevFood.put(id2, f2.getFoodLevel());
                 }
                 if (cfg.syncSaturation) {
-                    float minSat = Math.min(f1.getSaturationLevel(), f2.getSaturationLevel());
-                    f1.setSaturation(minSat);
-                    f2.setSaturation(minSat);
+                    float cur1 = f1.getSaturationLevel();
+                    float cur2 = f2.getSaturationLevel();
+                    float prev1 = prevSat.getOrDefault(id1, cur1);
+                    float prev2 = prevSat.getOrDefault(id2, cur2);
+
+                    if (cur1 > prev1) {
+                        f2.setSaturation(cur1);
+                    } else if (cur2 > prev2) {
+                        f1.setSaturation(cur2);
+                    } else if (cur1 != cur2) {
+                        float min = Math.min(cur1, cur2);
+                        f1.setSaturation(min);
+                        f2.setSaturation(min);
+                    }
+
+                    prevSat.put(id1, f1.getSaturationLevel());
+                    prevSat.put(id2, f2.getSaturationLevel());
                 }
             }
         }
@@ -360,24 +396,27 @@ public class GameManager {
     private void removePlayerFromAllTeams(String playerUUID) {
         ServerPlayer p = server.getPlayerList().getPlayer(UUID.fromString(playerUUID));
         if (p == null) return;
-        String name = p.getName().getString();
-        Scoreboard sb = server.getScoreboard();
-        for (String t : new String[]{TEAM_GREEN, TEAM_YELLOW, TEAM_RED, TEAM_DEAD}) {
-            PlayerTeam team = sb.getPlayerTeam(t);
-            if (team != null) sb.removePlayerFromTeam(name, team);
+        removeFromLdlTeam(server.getScoreboard(), p.getName().getString());
+    }
+
+    /** Removes the player from whichever LDL team they are currently in (if any). */
+    private void removeFromLdlTeam(Scoreboard sb, String playerName) {
+        PlayerTeam current = sb.getPlayersTeam(playerName);
+        if (current == null) return;
+        String n = current.getName();
+        if (n.equals(TEAM_GREEN) || n.equals(TEAM_YELLOW) || n.equals(TEAM_RED) || n.equals(TEAM_DEAD)) {
+            sb.removePlayerFromTeam(playerName, current);
         }
     }
 
     private void assignToTeam(String playerUUID, String teamName) {
+        if (playerUUID == null) return;
         ServerPlayer p = server.getPlayerList().getPlayer(UUID.fromString(playerUUID));
         if (p == null) return;
         String name = p.getName().getString();
         Scoreboard sb = server.getScoreboard();
 
-        for (String t : new String[]{TEAM_GREEN, TEAM_YELLOW, TEAM_RED, TEAM_DEAD}) {
-            PlayerTeam team = sb.getPlayerTeam(t);
-            if (team != null) sb.removePlayerFromTeam(name, team);
-        }
+        removeFromLdlTeam(sb, name);
 
         PlayerTeam target = sb.getPlayerTeam(teamName);
         if (target == null) {
@@ -389,7 +428,7 @@ public class GameManager {
 
     private String teamForLives(int lives, boolean isBoogeyman) {
         if (lives <= 0) return TEAM_DEAD;
-        if (isBoogeyman) return TEAM_RED;
+        // if (isBoogeyman) return TEAM_RED;
         if (lives <= 2) return TEAM_RED;
         if (lives <= 4) return TEAM_YELLOW;
         return TEAM_GREEN;
