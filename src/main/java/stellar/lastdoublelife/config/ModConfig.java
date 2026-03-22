@@ -23,8 +23,8 @@ public class ModConfig {
 
     // Syncing
     public boolean syncHealth = true;
-    public boolean syncHunger = false;
-    public boolean syncSaturation = false;
+    public boolean syncHunger = true;
+    public boolean syncSaturation = true;
 
     // Display
     public boolean showLifeColorsIngame = true;

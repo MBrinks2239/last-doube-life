@@ -1,6 +1,7 @@
 package stellar.lastdoublelife.manager;
 
 import net.minecraft.ChatFormatting;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -353,17 +354,33 @@ public class GameManager {
 
         if (!cfg.forbiddenItems.isEmpty()) {
             for (ServerPlayer player : srv.getPlayerList().getPlayers()) {
-                for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-                    var stack = player.getInventory().getItem(i);
-                    if (stack.isEmpty()) continue;
-                    String id = stack.getItem().toString();
-                    if (cfg.forbiddenItems.contains(id)) {
-                        player.getInventory().setItem(i, net.minecraft.world.item.ItemStack.EMPTY);
-                        player.sendSystemMessage(Component.literal(
-                                "[LDL] " + id + " is a forbidden item and was removed from your inventory.")
-                                .withStyle(ChatFormatting.RED));
-                    }
-                }
+                checkAndRemoveForbiddenItems(player, cfg);
+            }
+        }
+    }
+
+    // ---- Forbidden Items ----
+
+    /** Called from tick and from the crafting mixin. Returns true if the item was forbidden. */
+    public static boolean isForbidden(net.minecraft.world.item.ItemStack stack) {
+        if (stack.isEmpty()) return false;
+        var key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        if (key == null) return false;
+        return ModConfig.get().forbiddenItems.contains(key.toString());
+    }
+
+    private void checkAndRemoveForbiddenItems(ServerPlayer player, ModConfig cfg) {
+        var inv = player.getInventory();
+        for (int i = 0; i < inv.getContainerSize(); i++) {
+            var stack = inv.getItem(i);
+            if (stack.isEmpty()) continue;
+            var key = BuiltInRegistries.ITEM.getKey(stack.getItem());
+            if (key == null) continue;
+            String id = key.toString();
+            if (cfg.forbiddenItems.contains(id)) {
+                inv.setItem(i, net.minecraft.world.item.ItemStack.EMPTY);
+                player.sendSystemMessage(Component.literal(
+                        "[LDL] Forbidden item removed: " + id).withStyle(ChatFormatting.RED));
             }
         }
     }
