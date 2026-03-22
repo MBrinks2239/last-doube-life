@@ -164,6 +164,19 @@ public class GameManager {
         return null;
     }
 
+    public String removeBoogeyman(UUID player) {
+        SoulDuo duo = data.findDuoByPlayer(player);
+        if (duo == null) return playerName(player) + " is not in a duo";
+        if (!duo.isBoogeyman) return playerName(player) + " is not the Boogeyman";
+
+        duo.isBoogeyman = false;
+        save();
+        updateColor(duo);
+        sendToDuo(duo, Component.literal("[BOOGEYMAN] You are no longer the Boogeyman.")
+                .withStyle(ChatFormatting.GREEN));
+        return null;
+    }
+
     // ---- Admin Lives ----
 
     public String giveLives(UUID player, int amount) {
